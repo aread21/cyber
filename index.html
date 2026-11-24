@@ -1,721 +1,623 @@
-Claude
-This response didn’t load.
+"""
+EL BRENS - Online Rock Paper Scissors (Hand Tracking)
+------------------------------------------------------
+تشغيل:   python rps_online.py
+المتطلبات: pip install opencv-python mediapipe numpy
+
+كل حاجة جوه نافذة اللعبة نفسها (من غير ما تكتب في الـ Console):
+  H = إنشاء غرفة (Host)      J = الانضمام لغرفة (Join)      Q / ESC = خروج
+في الـ Host: SPACE لبدء الجولة للاثنين.
+"""
+
+import json
+import math
+import os
+import socket
+import sys
+import threading
+import time
+from collections import Counter, deque
+
+import cv2
+import numpy as np
+
+try:
+    import mediapipe as mp
+    mp_hands = mp.solutions.hands
+    mp_drawing = mp.solutions.drawing_utils
+except Exception as e:  # noqa
+    sys.exit(f"MediaPipe غير متاح ({e}).\nجرّب: pip install mediapipe")
+
+# ==========================================
+# الهوية والألوان (BGR)
+# ==========================================
+PLAYER_NAME = "EL BRENS"
+PORT = 5555
+WIN = f"{PLAYER_NAME} - Online RPS"
+W, H = 1280, 720
+FONT = cv2.FONT_HERSHEY_DUPLEX
+FONT_S = cv2.FONT_HERSHEY_SIMPLEX
+
+COLOR_BG_DARK = (32, 14, 28)
+COLOR_BG_LIGHT = (70, 28, 60)
+COLOR_PRIMARY = (255, 140, 40)
+COLOR_SECONDARY = (90, 30, 220)
+COLOR_ACCENT = (220, 80, 170)
+COLOR_GREEN = (110, 230, 80)
+COLOR_TEXT = (245, 245, 250)
+COLOR_MUTED = (170, 150, 165)
+
+IP_FILE = os.path.join(os.path.expanduser("~"), ".elbrens_rps_ip")
 
 
-Schedule · HTML
-<!DOCTYPE html>
-<html lang="en" dir="ltr">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#0f071e">
-<meta name="description" content="Lectures and sections schedule - Cyber-Security - Second Year - Helwan International Technological University">
-<title>El Brens Cyber - Second Year Schedule 2026/2027</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<style>
-:root{
-  --bg-dark:#0f071e; --bg-card:#180c2e;
-  --purple:#8a2be2; --purple-light:#9d4edd;
-  --blue:#48cae4; --blue-glow:rgba(72,202,228,.4);
-  --text:#f8f9fa; --muted:#b1a7d8; --pink:#f72585;
-  --border:rgba(138,43,226,.3);
-  --lecture:#ff4d4d; --section:#2ecc71;
-}
-*{box-sizing:border-box;margin:0;padding:0;font-family:'Cairo',sans-serif}
-body{
-  background:var(--bg-dark);color:var(--text);min-height:100vh;overflow-x:hidden;
-  background-image:radial-gradient(circle at 10% 20%,rgba(138,43,226,.15),transparent 40%),
-                   radial-gradient(circle at 90% 80%,rgba(72,202,228,.15),transparent 40%);
-  background-attachment:fixed;
-}
-:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
- 
-header{
-  background:linear-gradient(135deg,#180c2e,#241147);
-  border-bottom:2px solid var(--purple);padding:20px 15px;text-align:center;
-  box-shadow:0 10px 30px rgba(0,0,0,.5);
-}
-.header-row{flex-direction:row-reverse;display:flex;align-items:center;justify-content:space-between;gap:12px;max-width:900px;margin:0 auto}
-.header-content{flex:1;display:flex;flex-direction:column;align-items:center;gap:10px;min-width:0}
-.side-logo{flex:0 0 auto;width:84px;height:84px;border-radius:50%;background:#fff;padding:4px;object-fit:contain;
-  border:2px solid var(--blue);box-shadow:0 0 18px var(--blue-glow),0 4px 14px rgba(0,0,0,.5);transition:transform .3s}
-.side-logo:hover{transform:scale(1.08) rotate(-3deg)}
-.brand{font-family:'Orbitron','Cairo',sans-serif;font-weight:900;font-size:2rem;letter-spacing:4px;direction:ltr;line-height:1.1;
-  background:linear-gradient(90deg,#f72585,#b5179e,#8a2be2,#48cae4,#4ade80,#f72585);background-size:300% 100%;
-  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
-  animation:shine 6s linear infinite;filter:drop-shadow(0 0 10px rgba(138,43,226,.7))}
-@keyframes shine{to{background-position:300% 0}}
-.logo{position:relative;width:88px;height:88px;display:flex;align-items:center;justify-content:center;
-  background:radial-gradient(circle at 50% 45%,#1b1147 0%,#0b0620 75%);border-radius:50%;overflow:visible;
-  box-shadow:0 0 30px var(--blue-glow),inset 0 0 18px rgba(72,202,228,.35);animation:pulse 4s infinite alternate}
-.logo svg{position:absolute;inset:3px;width:calc(100% - 6px);height:calc(100% - 6px);animation:atomspin 14s linear infinite,hue 7s linear infinite;filter:drop-shadow(0 0 3px rgba(72,202,228,.8))}
-@keyframes atomspin{to{transform:rotate(360deg)}}
-@keyframes hue{to{filter:drop-shadow(0 0 3px rgba(72,202,228,.8)) hue-rotate(360deg)}}
-.logo-ring{position:absolute;width:104px;height:104px;border:2px dashed var(--blue);border-radius:50%;animation:spin 8s linear infinite}
-.logo-text{font-family:'Orbitron','Cairo',sans-serif;font-size:1.55rem;font-weight:900;z-index:2;letter-spacing:1px;
-  background:linear-gradient(90deg,#f72585,#ffd60a,#4ade80,#48cae4,#b388ff,#f72585);background-size:300% 100%;
-  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;animation:shine 3s linear infinite;
-  filter:drop-shadow(0 0 4px rgba(0,0,0,.95)) drop-shadow(0 0 6px rgba(255,255,255,.35))}
-@keyframes pulse{from{transform:scale(1);filter:hue-rotate(0)}to{transform:scale(1.06);filter:hue-rotate(35deg)}}
-@keyframes spin{to{transform:rotate(360deg)}}
-h1{font-size:1.3rem;font-weight:700;background:linear-gradient(90deg,#fff,var(--blue));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.subtitle{font-size:.9rem;color:var(--muted)}
-.print-sec{display:none}
-.saved{font-size:.78rem;color:#4ade80;min-height:1.1em}
- 
-.actions-bar{display:flex;flex-wrap:wrap;justify-content:center;gap:12px;margin:15px auto;max-width:900px;padding:0 15px}
-.btn{background:linear-gradient(135deg,var(--purple),var(--purple-light));color:#fff;border:none;padding:10px 18px;border-radius:12px;
-  font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:8px;box-shadow:0 4px 15px rgba(138,43,226,.4);
-  transition:transform .25s,box-shadow .25s,filter .25s;text-decoration:none;font-size:.9rem}
-.btn:hover{transform:translateY(-3px);box-shadow:0 6px 20px var(--blue-glow);filter:brightness(1.1)}
-.btn-wa{background:linear-gradient(135deg,#25d366,#128c7e);box-shadow:0 4px 15px rgba(37,211,102,.4)}
-.btn-portal{background:linear-gradient(135deg,#48cae4,#0077b6);box-shadow:0 4px 15px rgba(72,202,228,.4)}
-.btn-sm{font-size:.78rem;padding:6px 10px;border-radius:8px;box-shadow:none}
-.btn-platform{background:linear-gradient(135deg,#f72585,#b5179e)}
-.btn-cal{background:linear-gradient(135deg,#4285F4,#34A853)}
- 
-.panel{max-width:950px;margin:15px auto;padding:15px;background:rgba(24,12,46,.85);border-radius:16px;
-  border:1px solid var(--border);display:flex;flex-direction:column;gap:12px;width:calc(100% - 30px)}
-.panel h2{font-size:.9rem;color:var(--muted);font-weight:600}
-.panel h2 i{color:var(--blue)}
-.chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:8px}
-.chip{background:var(--bg-card);color:var(--text);border:1px solid var(--border);padding:9px 0;border-radius:10px;
-  font-size:.95rem;font-weight:700;cursor:pointer;transition:.2s;text-align:center}
-.chip:hover{border-color:var(--blue)}
-.chip.active{background:linear-gradient(135deg,var(--purple),var(--purple-light));border-color:var(--blue);box-shadow:0 0 12px var(--blue-glow)}
-.chip.all{grid-column:span 2;font-size:.85rem}
-.search{position:relative}
-.search input{width:100%;background:rgba(255,255,255,.07);border:1px solid var(--border);padding:12px 45px 12px 40px;
-  border-radius:12px;color:#fff;font-size:.95rem;outline:none;transition:.3s}
-.search input:focus{border-color:var(--blue);box-shadow:0 0 15px var(--blue-glow)}
-.search i.s{position:absolute;right:15px;top:50%;transform:translateY(-50%);color:var(--blue)}
-.search button{position:absolute;left:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:1rem;display:none}
-.search.has-text button{display:block}
-.filters{display:flex;flex-wrap:wrap;gap:12px}
-.field{flex:1;min-width:200px;display:flex;flex-direction:column;gap:5px}
-.field label{font-size:.85rem;color:var(--muted);font-weight:600}
-.field select{background:var(--bg-card);color:#fff;border:1px solid var(--border);padding:10px;border-radius:10px;font-size:.9rem;cursor:pointer}
-.weeks{display:flex;justify-content:center;gap:10px;flex-wrap:wrap}
-.week-btn{background:var(--bg-card);color:var(--muted);border:1px solid var(--border);padding:6px 16px;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer;transition:.2s}
-.week-btn.active{background:var(--purple);color:#fff;border-color:var(--blue);box-shadow:0 0 10px var(--blue-glow)}
-.panel-foot{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;font-size:.8rem;color:var(--muted)}
-.link-btn{background:none;border:none;color:var(--blue);cursor:pointer;font-weight:600;font-size:.8rem}
- 
-.next{max-width:950px;margin:0 auto 15px;width:calc(100% - 30px);padding:12px 16px;border-radius:14px;
-  background:linear-gradient(90deg,rgba(72,202,228,.18),rgba(138,43,226,.18));border:1px solid var(--blue);
-  display:none;gap:10px;align-items:center;font-size:.92rem}
-.next.show{display:flex}
-.next i{color:var(--blue);font-size:1.2rem}
- 
-.container{max-width:950px;margin:0 auto 40px;padding:0 15px}
-.day-card{background:var(--bg-card);border-radius:16px;border:1px solid var(--border);margin-bottom:25px;
-  box-shadow:0 8px 32px rgba(0,0,0,.4);overflow:hidden;animation:fade .4s ease}
-.day-card.today{border-color:var(--blue);box-shadow:0 8px 32px rgba(0,0,0,.4),0 0 18px var(--blue-glow)}
-.day-header{background:linear-gradient(90deg,rgba(138,43,226,.3),rgba(72,202,228,.1));padding:15px 20px;font-size:1.2rem;font-weight:700;
-  color:var(--blue);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
-.day-header .tags{display:flex;gap:6px}
-.day-header span.tag{font-size:.8rem;background:var(--purple);color:#fff;padding:3px 10px;border-radius:20px}
-.day-header span.tag.now{background:var(--blue);color:#06202a;font-weight:700}
-.list{padding:15px;display:flex;flex-direction:column;gap:12px}
-.item{background:rgba(255,255,255,.03);padding:12px 15px;border-radius:8px;display:flex;flex-direction:column;gap:6px;
-  transition:background .2s;border-inline-start:5px solid var(--lecture)}
-.item.section{border-inline-start-color:var(--section)}
-.item:hover{background:rgba(138,43,226,.1)}
-.item.ongoing{background:rgba(72,202,228,.12);box-shadow:inset 0 0 0 1px var(--blue)}
-.time{font-size:.8rem;color:var(--blue);font-weight:600;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
-.period{background:rgba(138,43,226,.25);color:#d8b4fe;padding:2px 8px;border-radius:6px;font-size:.75rem;border:1px solid var(--border)}
-.title{font-size:1rem;font-weight:700}
-.details{font-size:.85rem;color:var(--muted);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-top:4px}
-.badges{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.badge{padding:2px 8px;border-radius:4px;font-size:.75rem;font-weight:600;border:1px solid transparent}
-.b-sec{background:rgba(247,37,133,.2);color:var(--pink);border-color:rgba(247,37,133,.4)}
-.b-w1{background:rgba(247,37,133,.25);color:#ff477e;border-color:rgba(247,37,133,.5);font-weight:700}
-.b-w2{background:rgba(72,202,228,.25);color:var(--blue);border-color:rgba(72,202,228,.5);font-weight:700}
-.b-room{background:rgba(72,202,228,.15);color:var(--blue)}
-.b-lec{background:rgba(255,77,77,.2);color:#ff7b7b;border-color:rgba(255,77,77,.5)}
-.b-lab{background:rgba(46,204,113,.2);color:#4ade80;border-color:rgba(46,204,113,.5)}
-.b-now{background:var(--blue);color:#06202a;font-weight:700}
-.buttons{display:flex;gap:6px;flex-wrap:wrap}
-.day-off,.empty,.prompt{padding:20px;text-align:center;color:var(--muted);font-style:italic}
-.empty,.prompt{display:none;background:var(--bg-card);border:1px dashed var(--border);border-radius:16px}
-.empty.show,.prompt.show{display:block}
-.prompt{font-style:normal;font-size:1.05rem}
-.prompt i{color:var(--blue);font-size:1.6rem;display:block;margin-bottom:8px}
-.legend{display:flex;gap:16px;justify-content:center;font-size:.8rem;color:var(--muted);margin-bottom:15px;flex-wrap:wrap}
-.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-inline-end:6px;vertical-align:middle}
-footer{text-align:center;padding:20px;color:var(--muted);font-size:.85rem;border-top:1px solid var(--border);margin-top:30px}
-@keyframes fade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-@media (max-width:520px){.buttons{width:100%}.btn-sm{flex:1;justify-content:center}.side-logo{width:56px;height:56px}.brand{font-size:1.25rem;letter-spacing:2px}h1{font-size:1.05rem}.subtitle{font-size:.78rem}.logo{width:76px;height:76px}.logo-ring{width:90px;height:90px}}
-@media print{
-  body{background:#fff;color:#000}
-  header .logo,.brand,.actions-bar,.panel,.next,footer,.btn-sm,.legend,.prompt,.empty{display:none!important}
-  header{background:none;box-shadow:none;border-bottom:1px solid #999}
-  h1{-webkit-text-fill-color:#000;color:#000}.subtitle{color:#333}
-  .print-sec{display:block;font-weight:700;color:#000;font-size:1.1rem}
-  .day-card{border:1px solid #ccc;box-shadow:none;break-inside:avoid;background:#fff;animation:none}
-  .day-header{background:#eee;color:#000}
-  .item{background:#f9f9f9;border-inline-start-color:#333!important}
-  .title{color:#000}.time,.badge,.period,.details{color:#333!important;background:none!important}
-}
-</style>
-</head>
-<body>
- 
-<header>
-  <div class="header-row">
-    <img class="side-logo" src="data:image/jpeg;base64,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" alt="Helwan International Technological University logo">
-    <div class="header-content">
-      <div class="logo" aria-hidden="true"><div class="logo-ring"></div>
-      <svg class="atom" viewBox="-50 -50 100 100" aria-hidden="true" fill="none" stroke-width="1.3" stroke-linecap="round">
-        <g transform="rotate(0)">
-          <ellipse rx="44" ry="14" stroke="#48cae4"><animate attributeName="stroke" values="#48cae4;#ffffff;#48cae4" dur="6.4s" repeatCount="indefinite"/></ellipse>
-          <circle r="3.4" fill="#0b0620" stroke="#48cae4" stroke-width="1.6">
-            <animateMotion dur="3.2s" repeatCount="indefinite" path="M-44 0A44 14 0 1 0 44 0A44 14 0 1 0 -44 0Z"/>
-            <animate attributeName="fill" values="#48cae4;#0b0620;#48cae4" dur="3.2s" repeatCount="indefinite"/>
-          </circle>
-        </g>
-        <g transform="rotate(36)">
-          <ellipse rx="44" ry="14" stroke="#f72585"><animate attributeName="stroke" values="#f72585;#ffffff;#f72585" dur="8.2s" repeatCount="indefinite"/></ellipse>
-          <circle r="3.4" fill="#0b0620" stroke="#f72585" stroke-width="1.6">
-            <animateMotion dur="4.1s" repeatCount="indefinite" path="M-44 0A44 14 0 1 0 44 0A44 14 0 1 0 -44 0Z"/>
-            <animate attributeName="fill" values="#f72585;#0b0620;#f72585" dur="4.1s" repeatCount="indefinite"/>
-          </circle>
-        </g>
-        <g transform="rotate(72)">
-          <ellipse rx="44" ry="14" stroke="#4ade80"><animate attributeName="stroke" values="#4ade80;#ffffff;#4ade80" dur="5.4s" repeatCount="indefinite"/></ellipse>
-          <circle r="3.4" fill="#0b0620" stroke="#4ade80" stroke-width="1.6">
-            <animateMotion dur="2.7s" repeatCount="indefinite" path="M-44 0A44 14 0 1 0 44 0A44 14 0 1 0 -44 0Z"/>
-            <animate attributeName="fill" values="#4ade80;#0b0620;#4ade80" dur="2.7s" repeatCount="indefinite"/>
-          </circle>
-        </g>
-        <g transform="rotate(108)">
-          <ellipse rx="44" ry="14" stroke="#b388ff"><animate attributeName="stroke" values="#b388ff;#ffffff;#b388ff" dur="7.4s" repeatCount="indefinite"/></ellipse>
-          <circle r="3.4" fill="#0b0620" stroke="#b388ff" stroke-width="1.6">
-            <animateMotion dur="3.7s" repeatCount="indefinite" path="M-44 0A44 14 0 1 0 44 0A44 14 0 1 0 -44 0Z"/>
-            <animate attributeName="fill" values="#b388ff;#0b0620;#b388ff" dur="3.7s" repeatCount="indefinite"/>
-          </circle>
-        </g>
-        <g transform="rotate(144)">
-          <ellipse rx="44" ry="14" stroke="#ffd60a"><animate attributeName="stroke" values="#ffd60a;#ffffff;#ffd60a" dur="9.2s" repeatCount="indefinite"/></ellipse>
-          <circle r="3.4" fill="#0b0620" stroke="#ffd60a" stroke-width="1.6">
-            <animateMotion dur="4.6s" repeatCount="indefinite" path="M-44 0A44 14 0 1 0 44 0A44 14 0 1 0 -44 0Z"/>
-            <animate attributeName="fill" values="#ffd60a;#0b0620;#ffd60a" dur="4.6s" repeatCount="indefinite"/>
-          </circle>
-        </g>
-      </svg>
-      <div class="logo-text">CE</div></div>
-      <div class="brand">EL BRENS CYBER</div>
-      <h1>Helwan International Technological University</h1>
-      <div class="subtitle">Faculty of Technology in Cairo - Cyber-Security Technology Department (Second Year - 1st Term 2026/2027)</div>
-      <div class="print-sec" id="printSec"></div>
-    </div>
-    <img class="side-logo" src="data:image/jpeg;base64,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" alt="Faculty of Technology in Cairo logo">
-  </div>
-</header>
- 
-<nav class="actions-bar" dir="rtl" aria-label="Quick actions">
-  <a id="portalLink" target="_blank" rel="noopener noreferrer" class="btn btn-portal"><i class="fa-solid fa-graduation-cap"></i> البوابة الجامعية</a>
-  <button class="btn btn-wa" id="waBtn" type="button"><i class="fa-brands fa-whatsapp"></i> مشاركة واتساب</button>
-  <button class="btn" id="printBtn" type="button" title="حفظ الجدول كملف PDF"><i class="fa-solid fa-floppy-disk"></i> حفظ</button>
-</nav>
- 
-<section class="panel" aria-label="Section and filters">
-  <div class="search" id="searchWrap" dir="rtl">
-    <i class="fa-solid fa-search s" aria-hidden="true"></i>
-    <input type="search" id="searchInput" autocomplete="off" aria-label="بحث"
-           placeholder="ابحث باسم الدكتور، المهندس، المادة، القاعة (عربي / English)...">
-    <button type="button" id="clearSearch" aria-label="Clear search"><i class="fa-solid fa-xmark"></i></button>
-  </div>
- 
-  <div class="filters">
-    <div class="field">
-      <label for="secSelect"><i class="fa-solid fa-users"></i> Section:</label>
-      <select id="secSelect"></select>
-      <span class="saved" id="savedNote" aria-live="polite"></span>
-    </div>
-    <div class="field">
-      <label for="daySelect"><i class="fa-solid fa-calendar-days"></i> Day:</label>
-      <select id="daySelect"></select>
-    </div>
-  </div>
- 
-  <div class="weeks" role="group" aria-label="Week filter">
-    <button type="button" class="week-btn" data-week="all">All weeks</button>
-    <button type="button" class="week-btn" data-week="1">Week 1</button>
-    <button type="button" class="week-btn" data-week="2">Week 2</button>
-  </div>
- 
-  <div class="panel-foot">
-    <span id="count" aria-live="polite"></span>
-    <button type="button" class="link-btn" id="resetBtn"><i class="fa-solid fa-rotate-left"></i> Reset filters</button>
-  </div>
-</section>
- 
-<div class="next" id="nextBox" role="status"><i class="fa-solid fa-bolt" aria-hidden="true"></i><div id="nextText"></div></div>
- 
-<main class="container">
-  <div class="legend">
-    <span><i style="background:var(--lecture)"></i>Lecture</span>
-    <span><i style="background:var(--section)"></i>Section (Week 1 / Week 2)</span>
-  </div>
-  <div class="prompt" id="prompt"><i class="fa-solid fa-hand-pointer" aria-hidden="true"></i>Pick your section above to see only your own schedule.</div>
-  <div id="schedule"></div>
-  <div class="empty" id="empty"><i class="fa-regular fa-face-meh"></i> No matching results. Try changing the filters or the search.</div>
-</main>
- 
-<footer>Helwan International Technological University © 2026/2027 - Designed for the Cyber-Security Department (El Brens Cyber)</footer>
- 
-<script>
-/* ================= الإعدادات ================= */
-const CONFIG = {
-  portalUrl:   "https://www.facebook.com/share/19anDE38fg/",   // رابط البوابة الجامعية
-  platformUrl: "https://www.facebook.com/share/19anDE38fg/",   // رابط منصة المواد (غيّره لو مختلف)
-  // تاريخ بداية الأسبوع الأول (Week 1) بصيغة "YYYY-MM-DD" عشان تتحدد الأسابيع تلقائياً. سيبه null لو مش عايزه.
-  week1Start:  null,
-  tz: "Africa/Cairo",
-  // رابط منصة مادة معيّن لكل مدرس (بالاسم كما في البيانات). أي مدرس مش مذكور هنا بياخد platformUrl.
-  platformByInstructor: {
-    "م. أحمد": "https://tremendous-starfish-d49.notion.site/3f74401206e980a0afbdd2904aee2c58?v=4614401206e983a997f9085395a3afc0&pvs=74"   // Eng. Ahmed Yahya
-  }
-};
-const platformFor = it => CONFIG.platformByInstructor[it.who] || CONFIG.platformUrl;
- 
-/* ================= البيانات (مأخوذة من جدول الإكسل خلية بخلية) =================
-   day: اليوم | p: رقم الفترة | s,e: البداية والنهاية (24 ساعة)
-   type: L = محاضرة ، S = سكشن | secs: السكاشن المعنية
-   week: "all" أو 1 أو 2 (الرقم (1) أو (2) في الجدول)                        */
-const DAYS = [
-  {key:"friday",    name:"Friday",   js:5},
-  {key:"saturday",  name:"Saturday",    js:6},
-  {key:"sunday",    name:"Sunday",    js:0},
-  {key:"monday",    name:"Monday",  js:1},
-  {key:"tuesday",   name:"Tuesday", js:2},
-  {key:"wednesday", name:"Wednesday", js:3}
-];
-const PERIODS = {1:"1st",2:"2nd",3:"3rd",4:"4th",5:"5th",6:"6th",7:"7th",8:"8th",9:"9th"};
-const SECTIONS = Array.from({length:15},(_,i)=>i+1);
- 
-const SCHEDULE = [
-  {"day":"friday","p":1,"s":"09:00","e":"10:00","type":"L","secs":[1,2,3,4,5],"week":"all","title":"Programming For Cyber-Security","who":"د. عبير حسن","room":"A-New"},
-  {"day":"friday","p":1,"s":"09:00","e":"10:00","type":"S","secs":[8],"week":1,"title":"Programming For Cyber-Security","who":"م. كريم عادل","room":"A02"},
-  {"day":"friday","p":1,"s":"09:00","e":"10:00","type":"S","secs":[11],"week":1,"title":"Internet Application Development","who":"م. نادية","room":"D103"},
-  {"day":"friday","p":1,"s":"09:00","e":"10:00","type":"S","secs":[14,15],"week":2,"title":"Programming For Cyber-Security","who":"م. كريم عادل","room":"G204"},
-  {"day":"friday","p":2,"s":"10:00","e":"11:00","type":"S","secs":[2],"week":1,"title":"Internet Application Development","who":"م. نادية","room":"D103"},
-  {"day":"friday","p":2,"s":"10:00","e":"11:00","type":"L","secs":[6,7,8,9,10],"week":"all","title":"Programming For Cyber-Security","who":"د. عبير حسن","room":"A-New"},
-  {"day":"friday","p":2,"s":"10:00","e":"11:00","type":"S","secs":[11],"week":1,"title":"Programming For Cyber-Security","who":"م. كريم عادل","room":"A02"},
-  {"day":"friday","p":2,"s":"10:00","e":"11:00","type":"S","secs":[12,13],"week":2,"title":"Programming For Cyber-Security","who":"م. كريم عادل","room":"G204"},
-  {"day":"friday","p":3,"s":"11:00","e":"12:00","type":"S","secs":[2],"week":2,"title":"Internet Application Development","who":"م. نادية","room":"A305"},
-  {"day":"friday","p":3,"s":"11:00","e":"12:00","type":"S","secs":[3],"week":1,"title":"Internet Application Development","who":"م. نادية","room":"D103"},
-  {"day":"friday","p":3,"s":"11:00","e":"12:00","type":"S","secs":[3],"week":2,"title":"Internet Application Development","who":"م. نادية","room":"A305"},
-  {"day":"friday","p":3,"s":"11:00","e":"12:00","type":"S","secs":[4],"week":2,"title":"Internet Application Development","who":"م. نادية","room":"A305"},
-  {"day":"friday","p":3,"s":"11:00","e":"12:00","type":"S","secs":[9],"week":1,"title":"Programming For Cyber-Security","who":"م. كريم عادل","room":"A02"},
-  {"day":"friday","p":3,"s":"11:00","e":"12:00","type":"L","secs":[11,12,13,14,15],"week":"all","title":"Programming For Cyber-Security","who":"د. عبير حسن","room":"A-New"},
-  {"day":"friday","p":4,"s":"14:00","e":"15:00","type":"L","secs":[1,2,3,4],"week":"all","title":"Internet Application Development","who":"د. فينان ناجي","room":"G205"},
-  {"day":"friday","p":4,"s":"14:00","e":"15:00","type":"S","secs":[5],"week":1,"title":"Internet Application Development","who":"م. نادية","room":"D103"},
-  {"day":"friday","p":4,"s":"14:00","e":"15:00","type":"S","secs":[5],"week":2,"title":"Internet Application Development","who":"م. نادية","room":"A304"},
-  {"day":"friday","p":4,"s":"14:00","e":"15:00","type":"S","secs":[7],"week":1,"title":"Secure Network","who":"م. ريم","room":"PLC"},
-  {"day":"friday","p":4,"s":"14:00","e":"15:00","type":"S","secs":[8,9],"week":2,"title":"Programming For Cyber-Security","who":"م. كريم عادل","room":"G204"},
-  {"day":"friday","p":4,"s":"14:00","e":"15:00","type":"S","secs":[10],"week":2,"title":"Secure Network","who":"م. ريم","room":"PLC"},
-  {"day":"friday","p":4,"s":"14:00","e":"15:00","type":"S","secs":[11],"week":2,"title":"Internet Application Development","who":"م. نادية","room":"A304"},
-  {"day":"friday","p":4,"s":"14:00","e":"15:00","type":"S","secs":[14],"week":1,"title":"Programming For Cyber-Security","who":"م. كريم عادل","room":"A02"},
-  {"day":"friday","p":5,"s":"15:00","e":"16:00","type":"S","secs":[4],"week":1,"title":"Internet Application Development","who":"م. نادية","room":"D103"},
-  {"day":"friday","p":5,"s":"15:00","e":"16:00","type":"L","secs":[5,6,7,8],"week":"all","title":"Internet Application Development","who":"د. فينان ناجي","room":"G205"},
-  {"day":"friday","p":5,"s":"15:00","e":"16:00","type":"S","secs":[10,11],"week":2,"title":"Programming For Cyber-Security","who":"م. كريم عادل","room":"G204"},
-  {"day":"friday","p":5,"s":"15:00","e":"16:00","type":"S","secs":[12],"week":1,"title":"Programming For Cyber-Security","who":"م. كريم عادل","room":"A02"},
-  {"day":"friday","p":6,"s":"16:00","e":"17:00","type":"S","secs":[8],"week":1,"title":"Secure Network","who":"م. ريم","room":"A01"},
-  {"day":"friday","p":6,"s":"16:00","e":"17:00","type":"L","secs":[9,10,11,12],"week":"all","title":"Internet Application Development","who":"د. فينان ناجي","room":"G205"},
-  {"day":"friday","p":6,"s":"16:00","e":"17:00","type":"S","secs":[13],"week":1,"title":"Programming For Cyber-Security","who":"م. كريم عادل","room":"A02"},
-  {"day":"friday","p":7,"s":"17:00","e":"18:00","type":"S","secs":[10],"week":1,"title":"Programming For Cyber-Security","who":"م. كريم عادل","room":"A02"},
-  {"day":"friday","p":7,"s":"17:00","e":"18:00","type":"L","secs":[13,14,15],"week":"all","title":"Internet Application Development","who":"د. فينان ناجي","room":"G205"},
-  {"day":"sunday","p":1,"s":"09:00","e":"10:00","type":"L","secs":[1,2,3,4],"week":"all","title":"Network Security Protocol","who":"د. آلاء الشنهابي","room":"A304"},
-  {"day":"sunday","p":1,"s":"09:00","e":"10:00","type":"S","secs":[9],"week":1,"title":"Internet Application Development","who":"م. حبيبة","room":"A01"},
-  {"day":"sunday","p":1,"s":"09:00","e":"10:00","type":"S","secs":[15],"week":1,"title":"Programming For Cyber-Security","who":"م. كريم عادل","room":"D103"},
-  {"day":"sunday","p":2,"s":"10:00","e":"11:00","type":"S","secs":[1],"week":2,"title":"Network Security Protocol","who":"م. أمنية","room":"A01"},
-  {"day":"sunday","p":2,"s":"10:00","e":"11:00","type":"L","secs":[5,6,7,8],"week":"all","title":"Network Security Protocol","who":"د. آلاء الشنهابي","room":"A304"},
-  {"day":"sunday","p":2,"s":"10:00","e":"11:00","type":"S","secs":[12],"week":1,"title":"Internet Application Development","who":"م. حبيبة","room":"A01"},
-  {"day":"sunday","p":3,"s":"11:00","e":"12:00","type":"S","secs":[2],"week":2,"title":"Network Security Protocol","who":"م. أمنية","room":"A01"},
-  {"day":"sunday","p":3,"s":"11:00","e":"12:00","type":"S","secs":[8],"week":1,"title":"Internet Application Development","who":"م. حبيبة","room":"A01"},
-  {"day":"sunday","p":3,"s":"11:00","e":"12:00","type":"L","secs":[9,10,11,12],"week":"all","title":"Network Security Protocol","who":"د. آلاء الشنهابي","room":"A304"},
-  {"day":"sunday","p":4,"s":"12:00","e":"13:00","type":"L","secs":[13,14,15],"week":"all","title":"Network Security Protocol","who":"د. آلاء الشنهابي","room":"A304"},
-  {"day":"sunday","p":5,"s":"13:00","e":"14:00","type":"S","secs":[2],"week":1,"title":"Artificial Intelligence","who":"م. محمود","room":"PLC"},
-  {"day":"sunday","p":5,"s":"13:00","e":"14:00","type":"S","secs":[4],"week":2,"title":"Network Security Protocol","who":"م. أمنية","room":"A01"},
-  {"day":"sunday","p":5,"s":"13:00","e":"14:00","type":"S","secs":[9],"week":2,"title":"Secure Network","who":"م. ريم","room":"PLC"},
-  {"day":"sunday","p":5,"s":"13:00","e":"14:00","type":"S","secs":[10],"week":1,"title":"Internet Application Development","who":"م. حبيبة","room":"A01"},
-  {"day":"sunday","p":6,"s":"14:00","e":"15:00","type":"S","secs":[2],"week":1,"title":"Secure Network","who":"م. أحمد","room":"A01"},
-  {"day":"sunday","p":6,"s":"14:00","e":"15:00","type":"S","secs":[3],"week":2,"title":"Network Security Protocol","who":"م. أمنية","room":"A01"},
-  {"day":"sunday","p":6,"s":"14:00","e":"15:00","type":"S","secs":[6],"week":2,"title":"Secure Network","who":"م. ريم","room":"A02"},
-  {"day":"sunday","p":6,"s":"14:00","e":"15:00","type":"S","secs":[10],"week":1,"title":"Secure Network","who":"م. ريم","room":"A02"},
-  {"day":"sunday","p":7,"s":"15:00","e":"16:00","type":"S","secs":[4],"week":1,"title":"Secure Network","who":"م. أحمد","room":"D101"},
-  {"day":"sunday","p":7,"s":"15:00","e":"16:00","type":"S","secs":[5,6],"week":1,"title":"Secure Network","who":"م. ريم","room":"G205"},
-  {"day":"sunday","p":7,"s":"15:00","e":"16:00","type":"S","secs":[7],"week":2,"title":"Secure Network","who":"م. ريم","room":"G105"},
-  {"day":"sunday","p":7,"s":"15:00","e":"16:00","type":"S","secs":[8,9],"week":2,"title":"Internet Application Development","who":"م. حبيبة","room":"G201"},
-  {"day":"sunday","p":7,"s":"15:00","e":"16:00","type":"S","secs":[11],"week":2,"title":"Secure Network","who":"م. ريم","room":"G105"},
-  {"day":"sunday","p":7,"s":"15:00","e":"16:00","type":"S","secs":[13],"week":1,"title":"Internet Application Development","who":"م. حبيبة","room":"A01"},
-  {"day":"sunday","p":8,"s":"16:00","e":"17:00","type":"S","secs":[1],"week":1,"title":"Secure Network","who":"م. أحمد","room":"A01"},
-  {"day":"sunday","p":8,"s":"16:00","e":"17:00","type":"S","secs":[8],"week":2,"title":"Secure Network","who":"م. ريم","room":"A02"},
-  {"day":"sunday","p":8,"s":"16:00","e":"17:00","type":"S","secs":[11],"week":1,"title":"Secure Network","who":"م. ريم","room":"A02"},
-  {"day":"sunday","p":9,"s":"17:00","e":"18:00","type":"S","secs":[3],"week":1,"title":"Secure Network","who":"م. أحمد","room":"A01"},
-  {"day":"sunday","p":9,"s":"17:00","e":"18:00","type":"S","secs":[5],"week":2,"title":"Secure Network","who":"م. ريم","room":"A02"},
-  {"day":"sunday","p":9,"s":"17:00","e":"18:00","type":"S","secs":[6,7],"week":2,"title":"Artificial Intelligence","who":"م. ماريو","room":"G201"},
-  {"day":"sunday","p":9,"s":"17:00","e":"18:00","type":"S","secs":[9],"week":1,"title":"Secure Network","who":"م. ريم","room":"A02"},
-  {"day":"monday","p":1,"s":"09:00","e":"10:00","type":"S","secs":[14],"week":1,"title":"Internet Application Development","who":"م. حبيبة","room":"A01"},
-  {"day":"monday","p":2,"s":"10:00","e":"11:00","type":"S","secs":[5],"week":2,"title":"Network Security Protocol","who":"م. عمر","room":"D101"},
-  {"day":"monday","p":2,"s":"10:00","e":"11:00","type":"S","secs":[5],"week":1,"title":"Network Security Protocol","who":"م. عمر","room":"A02"},
-  {"day":"monday","p":2,"s":"10:00","e":"11:00","type":"S","secs":[15],"week":1,"title":"Internet Application Development","who":"م. حبيبة","room":"A01"},
-  {"day":"monday","p":3,"s":"11:00","e":"12:00","type":"S","secs":[6],"week":2,"title":"Network Security Protocol","who":"م. عمر","room":"D101"},
-  {"day":"monday","p":3,"s":"11:00","e":"12:00","type":"S","secs":[7],"week":1,"title":"Internet Application Development","who":"م. ولاء جمعة","room":"A02"},
-  {"day":"monday","p":4,"s":"12:00","e":"13:00","type":"S","secs":[1],"week":2,"title":"Internet Application Development","who":"م. ولاء جمعة","room":"D103"},
-  {"day":"monday","p":4,"s":"12:00","e":"13:00","type":"S","secs":[6],"week":1,"title":"Internet Application Development","who":"م. ولاء جمعة","room":"A02"},
-  {"day":"monday","p":4,"s":"12:00","e":"13:00","type":"S","secs":[7],"week":2,"title":"Network Security Protocol","who":"م. عمر","room":"D101"},
-  {"day":"monday","p":4,"s":"12:00","e":"13:00","type":"S","secs":[12],"week":2,"title":"Secure Network","who":"م. شهد","room":"A01"},
-  {"day":"monday","p":5,"s":"13:00","e":"14:00","type":"S","secs":[1],"week":1,"title":"Internet Application Development","who":"م. ولاء جمعة","room":"A02"},
-  {"day":"monday","p":5,"s":"13:00","e":"14:00","type":"S","secs":[6,7],"week":2,"title":"Internet Application Development","who":"م. ولاء جمعة","room":"A202"},
-  {"day":"monday","p":5,"s":"13:00","e":"14:00","type":"S","secs":[8],"week":2,"title":"Network Security Protocol","who":"م. عمر","room":"D101"},
-  {"day":"monday","p":5,"s":"13:00","e":"14:00","type":"S","secs":[8],"week":1,"title":"Network Security Protocol","who":"م. عمر","room":"D101"},
-  {"day":"monday","p":5,"s":"13:00","e":"14:00","type":"S","secs":[13],"week":2,"title":"Secure Network","who":"م. شهد","room":"A01"},
-  {"day":"monday","p":6,"s":"14:00","e":"15:00","type":"S","secs":[1,2],"week":2,"title":"Artificial Intelligence","who":"م. محمود","room":"A303"},
-  {"day":"monday","p":6,"s":"14:00","e":"15:00","type":"S","secs":[10],"week":2,"title":"Network Security Protocol","who":"م. عمر","room":"D101"},
-  {"day":"monday","p":6,"s":"14:00","e":"15:00","type":"S","secs":[10],"week":1,"title":"Network Security Protocol","who":"م. عمر","room":"A02"},
-  {"day":"monday","p":6,"s":"14:00","e":"15:00","type":"S","secs":[12,13],"week":2,"title":"Internet Application Development","who":"م. حبيبة","room":"G203"},
-  {"day":"monday","p":6,"s":"14:00","e":"15:00","type":"S","secs":[14],"week":2,"title":"Secure Network","who":"م. شهد","room":"A01"},
-  {"day":"monday","p":7,"s":"15:00","e":"16:00","type":"S","secs":[1,2],"week":2,"title":"Secure Network","who":"م. أحمد","room":"G202"},
-  {"day":"monday","p":7,"s":"15:00","e":"16:00","type":"L","secs":[3],"week":"all","title":"English","who":"أ. أدهم","room":"A202"},
-  {"day":"monday","p":7,"s":"15:00","e":"16:00","type":"S","secs":[4,5],"week":1,"title":"Artificial Intelligence","who":"م. محمود","room":"F-Seminar"},
-  {"day":"monday","p":7,"s":"15:00","e":"16:00","type":"L","secs":[6],"week":"all","title":"English","who":"أ. أدهم","room":"A202"},
-  {"day":"monday","p":7,"s":"15:00","e":"16:00","type":"L","secs":[7],"week":"all","title":"English","who":"أ. أدهم","room":"A202"},
-  {"day":"monday","p":7,"s":"15:00","e":"16:00","type":"S","secs":[9],"week":2,"title":"Network Security Protocol","who":"م. عمر","room":"D101"},
-  {"day":"monday","p":7,"s":"15:00","e":"16:00","type":"S","secs":[9],"week":1,"title":"Network Security Protocol","who":"م. عمر","room":"A02"},
-  {"day":"monday","p":7,"s":"15:00","e":"16:00","type":"S","secs":[10],"week":2,"title":"Artificial Intelligence","who":"م. ماريو","room":"G105"},
-  {"day":"monday","p":7,"s":"15:00","e":"16:00","type":"S","secs":[14,15],"week":2,"title":"Internet Application Development","who":"م. حبيبة","room":"G203"},
-  {"day":"monday","p":8,"s":"16:00","e":"17:00","type":"L","secs":[1,2],"week":"all","title":"English","who":"أ. أدهم","room":"G205"},
-  {"day":"monday","p":8,"s":"16:00","e":"17:00","type":"L","secs":[4],"week":"all","title":"English","who":"أ. أدهم","room":"G205"},
-  {"day":"monday","p":8,"s":"16:00","e":"17:00","type":"S","secs":[11],"week":2,"title":"Network Security Protocol","who":"م. عمر","room":"D101"},
-  {"day":"monday","p":8,"s":"16:00","e":"17:00","type":"S","secs":[11],"week":1,"title":"Network Security Protocol","who":"م. عمر","room":"A02"},
-  {"day":"monday","p":8,"s":"16:00","e":"17:00","type":"S","secs":[12,13],"week":1,"title":"Secure Network","who":"م. شهد","room":"G201"},
-  {"day":"monday","p":8,"s":"16:00","e":"17:00","type":"S","secs":[15],"week":2,"title":"Secure Network","who":"م. شهد","room":"A01"},
-  {"day":"monday","p":9,"s":"17:00","e":"18:00","type":"S","secs":[3,4],"week":2,"title":"Secure Network","who":"م. أحمد","room":"G202"},
-  {"day":"monday","p":9,"s":"17:00","e":"18:00","type":"L","secs":[5],"week":"all","title":"English","who":"أ. أدهم","room":"G205"},
-  {"day":"monday","p":9,"s":"17:00","e":"18:00","type":"L","secs":[8,9],"week":"all","title":"English","who":"أ. أدهم","room":"G205"},
-  {"day":"monday","p":9,"s":"17:00","e":"18:00","type":"S","secs":[12],"week":2,"title":"Network Security Protocol","who":"م. عمر","room":"D101"},
-  {"day":"monday","p":9,"s":"17:00","e":"18:00","type":"S","secs":[12],"week":1,"title":"Network Security Protocol","who":"م. عمر","room":"A02"},
-  {"day":"monday","p":9,"s":"17:00","e":"18:00","type":"S","secs":[14,15],"week":1,"title":"Secure Network","who":"م. شهد","room":"G201"},
-  {"day":"tuesday","p":1,"s":"09:00","e":"10:00","type":"S","secs":[1],"week":1,"title":"Artificial Intelligence","who":"م. محمود","room":"A02"},
-  {"day":"tuesday","p":1,"s":"09:00","e":"10:00","type":"S","secs":[2,3],"week":1,"title":"Network Security Protocol","who":"م. أمنية","room":"C107"},
-  {"day":"tuesday","p":1,"s":"09:00","e":"10:00","type":"S","secs":[5],"week":2,"title":"Artificial Intelligence","who":"م. محمود","room":"A02"},
-  {"day":"tuesday","p":1,"s":"09:00","e":"10:00","type":"S","secs":[6],"week":1,"title":"Network Security Protocol","who":"م. عمر","room":"A01"},
-  {"day":"tuesday","p":2,"s":"10:00","e":"11:00","type":"S","secs":[1],"week":1,"title":"Network Security Protocol","who":"م. أمنية","room":"C107"},
-  {"day":"tuesday","p":2,"s":"10:00","e":"11:00","type":"S","secs":[2],"week":1,"title":"C++","who":"م. ولاء جمعة","room":"A01"},
-  {"day":"tuesday","p":2,"s":"10:00","e":"11:00","type":"S","secs":[4],"week":1,"title":"Network Security Protocol","who":"م. أمنية","room":"C107"},
-  {"day":"tuesday","p":2,"s":"10:00","e":"11:00","type":"S","secs":[7],"week":1,"title":"Network Security Protocol","who":"م. عمر","room":"D103"},
-  {"day":"tuesday","p":2,"s":"10:00","e":"11:00","type":"S","secs":[13],"week":2,"title":"Network Security Protocol","who":"م. عمر","room":"D101"},
-  {"day":"tuesday","p":3,"s":"11:00","e":"12:00","type":"S","secs":[7],"week":1,"title":"Programming For Cyber-Security","who":"م. ولاء جمعة","room":"A01"},
-  {"day":"tuesday","p":3,"s":"11:00","e":"12:00","type":"S","secs":[14],"week":2,"title":"Network Security Protocol","who":"م. عمر","room":"A01"},
-  {"day":"tuesday","p":4,"s":"12:00","e":"13:00","type":"S","secs":[4],"week":1,"title":"C++","who":"م. ولاء جمعة","room":"A01"},
-  {"day":"tuesday","p":4,"s":"12:00","e":"13:00","type":"S","secs":[4],"week":2,"title":"Artificial Intelligence","who":"م. محمود","room":"A02"},
-  {"day":"tuesday","p":4,"s":"12:00","e":"13:00","type":"S","secs":[13],"week":1,"title":"Network Security Protocol","who":"م. عمر","room":"D101"},
-  {"day":"tuesday","p":4,"s":"12:00","e":"13:00","type":"S","secs":[15],"week":2,"title":"Network Security Protocol","who":"م. عمر","room":"A01"},
-  {"day":"tuesday","p":5,"s":"13:00","e":"14:00","type":"S","secs":[5],"week":1,"title":"C++","who":"م. ولاء جمعة","room":"A01"},
-  {"day":"tuesday","p":5,"s":"13:00","e":"14:00","type":"S","secs":[14],"week":1,"title":"Network Security Protocol","who":"م. عمر","room":"A02"},
-  {"day":"tuesday","p":6,"s":"14:00","e":"15:00","type":"S","secs":[2,3],"week":2,"title":"Programming For Cyber-Security","who":"م. ولاء جمعة","room":"A202"},
-  {"day":"tuesday","p":6,"s":"14:00","e":"15:00","type":"S","secs":[6],"week":1,"title":"Programming For Cyber-Security","who":"م. ولاء جمعة","room":"A01"},
-  {"day":"tuesday","p":6,"s":"14:00","e":"15:00","type":"S","secs":[15],"week":1,"title":"Network Security Protocol","who":"م. عمر","room":"A02"},
-  {"day":"tuesday","p":7,"s":"15:00","e":"16:00","type":"S","secs":[3],"week":1,"title":"C++","who":"م. ولاء جمعة","room":"A02"},
-  {"day":"tuesday","p":7,"s":"15:00","e":"16:00","type":"S","secs":[4,5],"week":2,"title":"Programming For Cyber-Security","who":"م. ولاء جمعة","room":"A202"},
-  {"day":"tuesday","p":8,"s":"16:00","e":"17:00","type":"S","secs":[6,7],"week":2,"title":"Programming For Cyber-Security","who":"م. ولاء جمعة","room":"A202"},
-  {"day":"tuesday","p":8,"s":"16:00","e":"17:00","type":"S","secs":[8],"week":1,"title":"Artificial Intelligence","who":"م. ماريو","room":"D105"},
-  {"day":"tuesday","p":8,"s":"16:00","e":"17:00","type":"L","secs":[10,11,12],"week":"all","title":"English","who":"أ. أدهم","room":"A-New"},
-  {"day":"tuesday","p":9,"s":"17:00","e":"18:00","type":"S","secs":[8],"week":2,"title":"Artificial Intelligence","who":"م. ماريو","room":"G201"},
-  {"day":"tuesday","p":9,"s":"17:00","e":"18:00","type":"S","secs":[9],"week":2,"title":"Artificial Intelligence","who":"م. ماريو","room":"G201"},
-  {"day":"tuesday","p":9,"s":"17:00","e":"18:00","type":"S","secs":[9],"week":1,"title":"Artificial Intelligence","who":"م. ماريو","room":"D103"},
-  {"day":"tuesday","p":9,"s":"17:00","e":"18:00","type":"L","secs":[13,14,15],"week":"all","title":"English","who":"أ. أدهم","room":"A-New"},
-  {"day":"wednesday","p":1,"s":"09:00","e":"10:00","type":"S","secs":[3],"week":2,"title":"Artificial Intelligence","who":"م. نادية","room":"D104"},
-  {"day":"wednesday","p":1,"s":"09:00","e":"10:00","type":"S","secs":[15],"week":2,"title":"Artificial Intelligence","who":"م. ماريو","room":"A01"},
-  {"day":"wednesday","p":2,"s":"10:00","e":"11:00","type":"S","secs":[3],"week":1,"title":"Artificial Intelligence","who":"م. نادية","room":"G202"},
-  {"day":"wednesday","p":2,"s":"10:00","e":"11:00","type":"S","secs":[11],"week":2,"title":"Artificial Intelligence","who":"م. نادية","room":"A01"},
-  {"day":"wednesday","p":2,"s":"10:00","e":"11:00","type":"S","secs":[13],"week":1,"title":"Artificial Intelligence","who":"م. نادية","room":"G202"},
-  {"day":"wednesday","p":2,"s":"10:00","e":"11:00","type":"S","secs":[14],"week":1,"title":"Artificial Intelligence","who":"م. نادية","room":"G202"},
-  {"day":"wednesday","p":3,"s":"11:00","e":"12:00","type":"L","secs":[5,6,7,8],"week":"all","title":"Artificial Intelligence","who":"د. محمد رمضان","room":"G204"},
-  {"day":"wednesday","p":3,"s":"11:00","e":"12:00","type":"S","secs":[14],"week":2,"title":"Artificial Intelligence","who":"م. نادية","room":"D102"},
-  {"day":"wednesday","p":4,"s":"12:00","e":"13:00","type":"L","secs":[1,2,3,4,5],"week":"all","title":"Specialized English","who":"د. أحمد حسن","room":"A-New"},
-  {"day":"wednesday","p":4,"s":"12:00","e":"13:00","type":"L","secs":[9,10,11,12],"week":"all","title":"Artificial Intelligence","who":"د. محمد رمضان","room":"G204"},
-  {"day":"wednesday","p":4,"s":"12:00","e":"13:00","type":"S","secs":[13],"week":2,"title":"Artificial Intelligence","who":"م. نادية","room":"A01"},
-  {"day":"wednesday","p":5,"s":"13:00","e":"14:00","type":"S","secs":[1],"week":1,"title":"C++","who":"م. ولاء جمعة","room":"D105"},
-  {"day":"wednesday","p":5,"s":"13:00","e":"14:00","type":"S","secs":[1],"week":2,"title":"C++","who":"م. ولاء جمعة","room":"D103"},
-  {"day":"wednesday","p":5,"s":"13:00","e":"14:00","type":"L","secs":[6,7,8,9,10],"week":"all","title":"Specialized English","who":"د. أحمد حسن","room":"A-New"},
-  {"day":"wednesday","p":5,"s":"13:00","e":"14:00","type":"S","secs":[12],"week":2,"title":"Artificial Intelligence","who":"م. نادية","room":"A01"},
-  {"day":"wednesday","p":5,"s":"13:00","e":"14:00","type":"L","secs":[13,14,15],"week":"all","title":"Artificial Intelligence","who":"د. محمد رمضان","room":"G204"},
-  {"day":"wednesday","p":6,"s":"14:00","e":"15:00","type":"L","secs":[1,2,3,4],"week":"all","title":"Artificial Intelligence","who":"د. محمد رمضان","room":"G204"},
-  {"day":"wednesday","p":6,"s":"14:00","e":"15:00","type":"S","secs":[7],"week":1,"title":"Artificial Intelligence","who":"م. ماريو","room":"D102"},
-  {"day":"wednesday","p":6,"s":"14:00","e":"15:00","type":"L","secs":[11,12,13,14,15],"week":"all","title":"Specialized English","who":"د. أحمد حسن","room":"A-New"},
-  {"day":"wednesday","p":7,"s":"15:00","e":"16:00","type":"L","secs":[6,7,8,9,10],"week":"all","title":"Secure Network","who":"د. محمد رمضان","room":"A-New"},
-  {"day":"wednesday","p":7,"s":"15:00","e":"16:00","type":"S","secs":[15],"week":1,"title":"Artificial Intelligence","who":"م. ماريو","room":"A304"},
-  {"day":"wednesday","p":8,"s":"16:00","e":"17:00","type":"L","secs":[1,2,3,4,5],"week":"all","title":"Secure Network","who":"د. محمد رمضان","room":"A-New"},
-  {"day":"wednesday","p":8,"s":"16:00","e":"17:00","type":"S","secs":[6],"week":1,"title":"Artificial Intelligence","who":"م. ماريو","room":"A02"},
-  {"day":"wednesday","p":8,"s":"16:00","e":"17:00","type":"S","secs":[10],"week":2,"title":"Internet Application Development","who":"م. حبيبة","room":"G203"},
-  {"day":"wednesday","p":8,"s":"16:00","e":"17:00","type":"S","secs":[11],"week":1,"title":"Artificial Intelligence","who":"م. نادية","room":"G202"},
-  {"day":"wednesday","p":8,"s":"16:00","e":"17:00","type":"S","secs":[12],"week":1,"title":"Artificial Intelligence","who":"م. نادية","room":"G202"},
-  {"day":"wednesday","p":9,"s":"17:00","e":"18:00","type":"S","secs":[10],"week":1,"title":"Artificial Intelligence","who":"م. ماريو","room":"A02"},
-  {"day":"wednesday","p":9,"s":"17:00","e":"18:00","type":"L","secs":[11,12,13,14,15],"week":"all","title":"Secure Network","who":"د. محمد رمضان","room":"A-New"}
-];
- 
-/* أسماء بالإنجليزي للبحث */
-const WHO_EN = {
-  "د. عبير حسن":"Dr. Abeer Hassan","د. فينان ناجي":"Dr. Finan Nagy","د. آلاء الشنهابي":"Dr. Alaa Al-Shenhaby",
-  "د. محمد رمضان":"Dr. Muhammed Ramadan","د. أحمد حسن":"Dr. Ahmed Hassan","م. كريم عادل":"Eng. Karim Adel",
-  "م. نادية":"Eng. Nadia","م. ريم":"Eng. Reem","م. حبيبة":"Eng. Habiba","م. أمنية":"Eng. Omnia",
-  "م. محمود":"Eng. Mahmoud","م. أحمد":"Eng. Ahmed Yahya","م. عمر":"Eng. Omar","م. ولاء جمعة":"Eng. Walaa Gomaa",
-  "م. شهد":"Eng. Shahd","م. ماريو":"Eng. Mario","أ. أدهم":"Mr. Adham"
-};
- 
-/* ================= أدوات ================= */
-const $ = id => document.getElementById(id);
-const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const norm = s => String(s).toLowerCase()
-  .replace(/[ً-ٰٟـ]/g,"")
-  .replace(/[إأآا]/g,"ا").replace(/ى/g,"ي").replace(/ة/g,"ه").replace(/\s+/g," ").trim();
-const toMin = t => { const [h,m]=t.split(":").map(Number); return h*60+m; };
-const fmt12 = t => { let [h,m]=t.split(":").map(Number); const ap=h>=12?"PM":"AM"; h=h%12||12; return `${h}:${String(m).padStart(2,"0")} ${ap}`; };
-const pad = n => String(n).padStart(2,"0");
-const store = {
-  get(){ try{ return JSON.parse(localStorage.getItem("elprince_cyber_v3")||"{}"); }catch(e){ return {}; } },
-  set(o){ try{ localStorage.setItem("elprince_cyber_v3",JSON.stringify(o)); }catch(e){} }
-};
-function fmtSecs(a){
-  if(a.length===1) return "Section "+a[0];
-  const consecutive = a.every((v,i)=>i===0||v===a[i-1]+1);
-  return "Sections "+(consecutive ? `${a[0]} - ${a[a.length-1]}` : a.join(" & "));
-}
- 
-/* ================= الأسبوع الحالي ================= */
-function currentWeekNumber(){
-  if(!CONFIG.week1Start) return null;
-  const start = new Date(CONFIG.week1Start+"T00:00:00");
-  if(isNaN(start)) return null;
-  const diff = Math.floor((Date.now()-start.getTime())/(7*864e5));
-  if(diff<0) return null;
-  return diff%2===0?1:2;
-}
- 
-/* ================= رابط التذكير (Google Calendar) ================= */
-function calendarUrl(it){
-  const day = DAYS.find(d=>d.key===it.day);
-  const now = new Date();
-  let date = new Date(now.getFullYear(),now.getMonth(),now.getDate());
-  if(CONFIG.week1Start){
-    const w1 = new Date(CONFIG.week1Start+"T00:00:00");
-    date = new Date(Math.max(date,w1));
-  }
-  while(date.getDay()!==day.js) date.setDate(date.getDate()+1);
-  if(CONFIG.week1Start && it.week==2){
-    const w1 = new Date(CONFIG.week1Start+"T00:00:00");
-    const k = Math.floor((date-w1)/(7*864e5));
-    if(k%2===0) date.setDate(date.getDate()+7);
-  }
-  const ymd = `${date.getFullYear()}${pad(date.getMonth()+1)}${pad(date.getDate())}`;
-  const stamp = t => `${ymd}T${t.replace(":","")}00`;
-  const typeName = it.type==="L"?"Lecture":"Section";
-  const text = `${typeName}: ${it.title} - ${fmtSecs(it.secs)}`;
-  const details = `${whoName(it)} - ${it.room}`;
-  const rule = it.week==="all" ? "RRULE:FREQ=WEEKLY" : "RRULE:FREQ=WEEKLY;INTERVAL=2";
-  return "https://calendar.google.com/calendar/render?action=TEMPLATE"
-    +"&text="+encodeURIComponent(text)
-    +"&details="+encodeURIComponent(details)
-    +"&location="+encodeURIComponent(it.room)
-    +"&dates="+stamp(it.s)+"/"+stamp(it.e)
-    +"&ctz="+encodeURIComponent(CONFIG.tz)
-    +"&recur="+encodeURIComponent(rule);
-}
- 
-/* ================= البناء ================= */
-const state = {sec:"", week:"all"};   // sec: "" (لم يُختَر) | "all" | "1".."15"
- 
-function buildControls(){
-  $("portalLink").href = CONFIG.portalUrl;
-  $("daySelect").innerHTML =
-    `<option value="all">📅 All days</option><option value="today">📍 Today</option>`+
-    DAYS.map(d=>`<option value="${d.key}">${d.name}</option>`).join("");
-  $("secSelect").innerHTML =
-    `<option value="">👆 Select your section</option>`+
-    SECTIONS.map(n=>`<option value="${n}">Section ${n}</option>`).join("")+
-    `<option value="all">👥 All sections</option>`;
-}
- 
-const whoName = it => WHO_EN[it.who] || it.who;
-function itemHTML(it){
-  const isL = it.type==="L";
-  const kind = isL?"Lecture":"Section";
-  const weekBadge = it.week===1?`<span class="badge b-w1">Week 1</span>`:it.week===2?`<span class="badge b-w2">Week 2</span>`:"";
-  return `
-  <article class="item ${isL?"lecture":"section"}" data-start="${it.s}" data-end="${it.e}">
-    <div class="time">
-      <span><i class="fa-regular fa-clock"></i> ${fmt12(it.s)} - ${fmt12(it.e)}</span>
-      <span class="period">Period ${it.p} (${PERIODS[it.p]}) - ${kind}</span>
-    </div>
-    <div class="title">${esc(it.title)} (${kind})</div>
-    <div class="details">
-      <div class="badges">
-        <span>${esc(whoName(it))}</span><span class="badge b-sec">${fmtSecs(it.secs)}</span>${weekBadge}<span class="badge b-room"><i class="fa-solid fa-door-open"></i> ${esc(it.room)}</span>
-      </div>
-      <div class="buttons" dir="rtl">
-        <a class="btn btn-sm btn-platform" href="${esc(platformFor(it))}" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-laptop-code"></i> منصة المادة</a>
-        <a class="btn btn-sm btn-cal" href="${esc(calendarUrl(it))}" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-bell"></i> تذكير</a>
-      </div>
-    </div>
-  </article>`;
-}
- 
-/* ================= الفلترة ================= */
-function todayKey(){
-  const j = new Date().getDay();
-  const d = DAYS.find(x=>x.js===j);
-  return d?d.key:null; // الخميس = null
-}
- 
-function matches(it,{sec,week,q}){
-  if(sec!=="all" && !it.secs.includes(Number(sec))) return false;
-  if(week!=="all" && it.week!=="all" && String(it.week)!==week) return false;
-  if(q){
-    const hay = norm([it.title,it.who,WHO_EN[it.who]||"",it.room,
-      it.type==="L"?"lecture محاضرة":"section سكشن",
-      it.week===1?"week 1 الاول":it.week===2?"week 2 الثاني":"", "section سكشن "+it.secs.join(" ")].join(" "));
-    if(!q.split(" ").every(w=>hay.includes(w))) return false;
-  }
-  return true;
-}
-const sortItems = (a,b)=> toMin(a.s)-toMin(b.s) || (a.type===b.type?0:a.type==="L"?-1:1) || String(a.week).localeCompare(String(b.week)) || a.secs[0]-b.secs[0];
- 
-function render(){
-  const q = norm($("searchInput").value);
-  const sec = state.sec, week = state.week;
-  let daySel = $("daySelect").value;
-  const tKey = todayKey();
-  if(daySel==="today") daySel = tKey || "none";
- 
-  store.set({day:$("daySelect").value,sec,week,q:$("searchInput").value});
-  $("searchWrap").classList.toggle("has-text",!!$("searchInput").value);
-  document.querySelectorAll(".week-btn").forEach(b=>{
-    const on=b.dataset.week===week; b.classList.toggle("active",on); b.setAttribute("aria-pressed",on);
-  });
-  $("secSelect").value = sec;
-  $("printSec").textContent = sec && sec!=="all" ? "Section "+sec+" Schedule" : "";
- 
-  const prompt=$("prompt"), empty=$("empty"), box=$("schedule");
-  if(!sec){
-    prompt.classList.add("show"); empty.classList.remove("show"); box.innerHTML="";
-    $("count").textContent=""; $("nextBox").classList.remove("show");
-    return;
-  }
-  prompt.classList.remove("show");
- 
-  let html="", total=0;
-  DAYS.forEach(d=>{
-    if(daySel!=="all" && d.key!==daySel) return;
-    const isToday = d.key===tKey;
-    const tags = `<div class="tags">${isToday?'<span class="tag now">Today</span>':""}</div>`;
-    if(d.key==="saturday"){
-      if(q) return;
-      html+=`<section class="day-card ${isToday?"today":""}" data-day="${d.key}">
-        <div class="day-header"><span>${d.name}</span>${tags}</div>
-        <div class="day-off">Weekly day off - enjoy it and recharge! 🚀</div></section>`;
-      return;
-    }
-    const items = SCHEDULE.filter(it=>it.day===d.key && matches(it,{sec,week,q})).sort(sortItems);
-    if(!items.length) return;
-    total+=items.length;
-    html+=`<section class="day-card ${isToday?"today":""}" data-day="${d.key}">
-      <div class="day-header"><span>${d.name}</span>${tags}</div>
-      <div class="list">${items.map(itemHTML).join("")}</div></section>`;
-  });
- 
-  if(daySel==="none"){
-    html=`<div class="day-card today"><div class="day-header"><span>Thursday</span><div class="tags"><span class="tag now">Today</span></div></div><div class="day-off">No classes today 🎉 - pick a day from the filter to view it.</div></div>`;
-  }
-  box.innerHTML = html;
-  empty.classList.toggle("show", total===0 && daySel!=="none");
-  const who = sec==="all" ? "All sections" : "Section "+sec;
-  $("count").textContent = total ? `${who}: ${total} sessions shown` : "";
-  markOngoing();
-  updateNext(sec,week,q);
-}
- 
-/* ================= جارية الآن / القادمة ================= */
-function markOngoing(){
-  const now = new Date(), m = now.getHours()*60+now.getMinutes();
-  document.querySelectorAll(".day-card.today .item").forEach(el=>{
-    const on = m>=toMin(el.dataset.start) && m<toMin(el.dataset.end);
-    el.classList.toggle("ongoing",on);
-    const t = el.querySelector(".time span:first-child");
-    const old = t.querySelector(".b-now"); if(old) old.remove();
-    if(on) t.insertAdjacentHTML("beforeend",' <span class="badge b-now">Ongoing now</span>');
-  });
-}
- 
-function updateNext(sec,week,q){
-  const box=$("nextBox");
-  if(sec==="all"){ box.classList.remove("show"); return; }
-  const cw = currentWeekNumber();
-  const effWeek = week!=="all" ? week : (cw?String(cw):"all");
-  const now=new Date(), nowMin=now.getHours()*60+now.getMinutes();
-  let best=null;
-  for(let add=0;add<7 && !best;add++){
-    const d=new Date(now); d.setDate(d.getDate()+add);
-    const day=DAYS.find(x=>x.js===d.getDay()); if(!day) continue;
-    const list=SCHEDULE.filter(it=>it.day===day.key && matches(it,{sec,week:effWeek,q}))
-      .filter(it=>add>0 || toMin(it.s)>nowMin).sort(sortItems);
-    if(list.length) best={it:list[0],day,add};
-  }
-  if(!best){ box.classList.remove("show"); return; }
-  const when = best.add===0?"Today":best.add===1?"Tomorrow":best.day.name;
-  const wk = best.it.week===1?" (Week 1)":best.it.week===2?" (Week 2)":"";
-  box.classList.add("show");
-  const isL = best.it.type==="L";
-  const kind = `<span class="badge ${isL?"b-lec":"b-lab"}">${isL?"Lecture":"Section"}</span>`;
-  $("nextText").innerHTML = `<b>Next for Section ${esc(sec)}:</b> ${kind} ${esc(best.it.title)}${wk} - ${when} ${fmt12(best.it.s)} - ${esc(best.it.room)}`;
-}
- 
-/* ================= مشاركة ================= */
-function shareWhatsApp(){
-  const msg = "🔥 Cyber-Security lectures & sections schedule - Second Year (Helwan International Technological University)\n"+location.href;
-  window.open("https://api.whatsapp.com/send?text="+encodeURIComponent(msg),"_blank","noopener");
-}
- 
-/* ================= التشغيل ================= */
-function init(){
-  buildControls();
-  const p = store.get();
-  $("daySelect").value = [...$("daySelect").options].some(o=>o.value===p.day)?p.day:"all";
-  state.sec = (p.sec==="all" || SECTIONS.includes(Number(p.sec))) ? String(p.sec) : "";
-  state.week = ["all","1","2"].includes(p.week)?p.week:(currentWeekNumber()?String(currentWeekNumber()):"all");
-  if(p.q) $("searchInput").value = p.q;
- 
-  $("daySelect").addEventListener("change",render);
-  let t; $("searchInput").addEventListener("input",()=>{clearTimeout(t);t=setTimeout(render,120);});
-  $("clearSearch").addEventListener("click",()=>{$("searchInput").value="";render();$("searchInput").focus();});
-  document.querySelectorAll(".week-btn").forEach(b=>b.addEventListener("click",()=>{state.week=b.dataset.week;render();}));
-  $("secSelect").addEventListener("change",()=>{
-    state.sec=$("secSelect").value; render();
-    if(state.sec && state.sec!=="all"){
-      const n=$("savedNote"); n.textContent="✓ Your section is saved and will open automatically next time";
-      clearTimeout(n._t); n._t=setTimeout(()=>n.textContent="",3500);
-    }
-  });
-  $("resetBtn").addEventListener("click",()=>{
-    $("searchInput").value="";$("daySelect").value="all";state.week="all";render();
-  });
-  $("waBtn").addEventListener("click",shareWhatsApp);
-  $("printBtn").addEventListener("click",()=>window.print());
- 
-  if(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches){ document.querySelectorAll("svg.atom").forEach(s=>s.pauseAnimations&&s.pauseAnimations()); }
-  render();
-  setInterval(markOngoing,60000);
-}
-document.addEventListener("DOMContentLoaded",init);
-</script>
-</body>
-</html>
- 
-Claude finished the response
+# ==========================================
+# أدوات الرسم
+# ==========================================
+def put_text(img, text, x, y, scale=0.8, color=COLOR_TEXT, thick=2,
+             font=FONT_S, align="left", shadow=True):
+    (tw, _), _ = cv2.getTextSize(text, font, scale, thick)
+    if align == "center":
+        x -= tw // 2
+    elif align == "right":
+        x -= tw
+    if shadow:
+        cv2.putText(img, text, (x + 2, y + 2), font, scale, (0, 0, 0), thick + 1, cv2.LINE_AA)
+    cv2.putText(img, text, (x, y), font, scale, color, thick, cv2.LINE_AA)
+
+
+def rrect(img, p1, p2, color, r=16, th=-1):
+    """مستطيل بحواف دائرية (th=-1 للتعبئة)."""
+    x1, y1 = p1
+    x2, y2 = p2
+    r = max(1, min(r, (x2 - x1) // 2, (y2 - y1) // 2))
+    if th < 0:
+        cv2.rectangle(img, (x1 + r, y1), (x2 - r, y2), color, -1)
+        cv2.rectangle(img, (x1, y1 + r), (x2, y2 - r), color, -1)
+        for cx, cy in ((x1 + r, y1 + r), (x2 - r, y1 + r), (x1 + r, y2 - r), (x2 - r, y2 - r)):
+            cv2.circle(img, (cx, cy), r, color, -1, cv2.LINE_AA)
+    else:
+        cv2.line(img, (x1 + r, y1), (x2 - r, y1), color, th, cv2.LINE_AA)
+        cv2.line(img, (x1 + r, y2), (x2 - r, y2), color, th, cv2.LINE_AA)
+        cv2.line(img, (x1, y1 + r), (x1, y2 - r), color, th, cv2.LINE_AA)
+        cv2.line(img, (x2, y1 + r), (x2, y2 - r), color, th, cv2.LINE_AA)
+        cv2.ellipse(img, (x1 + r, y1 + r), (r, r), 0, 180, 270, color, th, cv2.LINE_AA)
+        cv2.ellipse(img, (x2 - r, y1 + r), (r, r), 0, 270, 360, color, th, cv2.LINE_AA)
+        cv2.ellipse(img, (x2 - r, y2 - r), (r, r), 0, 0, 90, color, th, cv2.LINE_AA)
+        cv2.ellipse(img, (x1 + r, y2 - r), (r, r), 0, 90, 180, color, th, cv2.LINE_AA)
+
+
+def panel(img, p1, p2, fill=COLOR_BG_DARK, alpha=0.82, border=None, r=18, th=2):
+    """لوحة شفافة بحواف دائرية."""
+    x1, y1 = max(0, p1[0]), max(0, p1[1])
+    x2, y2 = min(img.shape[1], p2[0]), min(img.shape[0], p2[1])
+    if x2 - x1 < 4 or y2 - y1 < 4:
+        return
+    roi = img[y1:y2, x1:x2]
+    mask = np.zeros(roi.shape[:2], np.uint8)
+    rrect(mask, (0, 0), (x2 - x1 - 1, y2 - y1 - 1), 255, r, -1)
+    blended = cv2.addWeighted(roi, 1 - alpha, np.full_like(roi, fill), alpha, 0)
+    roi[mask > 0] = blended[mask > 0]
+    if border is not None:
+        rrect(img, (x1, y1), (x2 - 1, y2 - 1), border, r, th)
+
+
+def make_bg():
+    """خلفية متدرجة للّوبي."""
+    t = np.linspace(0, 1, H, dtype=np.float32)[:, None, None]
+    a = np.array(COLOR_BG_DARK, np.float32)
+    b = np.array(COLOR_BG_LIGHT, np.float32)
+    col = a * (1 - t) + b * t
+    return np.repeat(col, W, axis=1).astype(np.uint8)
+
+
+def draw_gesture_icon(img, gesture, cx, cy, color):
+    if gesture == "Rock":
+        cv2.circle(img, (cx, cy), 34, color, -1, cv2.LINE_AA)
+        for dx in (-12, 0, 12):
+            cv2.line(img, (cx + dx, cy - 14), (cx + dx, cy + 6), COLOR_BG_DARK, 3, cv2.LINE_AA)
+    elif gesture == "Paper":
+        cv2.rectangle(img, (cx - 22, cy - 5), (cx + 22, cy + 30), color, -1, cv2.LINE_AA)
+        for i, off in enumerate((-16, -6, 5, 16)):
+            hf = 34 if i in (1, 2) else 26
+            cv2.line(img, (cx + off, cy - 5), (cx + off, cy - hf), color, 7, cv2.LINE_AA)
+        cv2.line(img, (cx - 22, cy + 12), (cx - 35, cy - 2), color, 7, cv2.LINE_AA)
+    elif gesture == "Scissors":
+        cv2.circle(img, (cx - 14, cy + 22), 11, color, 4, cv2.LINE_AA)
+        cv2.circle(img, (cx + 14, cy + 22), 11, color, 4, cv2.LINE_AA)
+        cv2.line(img, (cx - 8, cy + 13), (cx + 18, cy - 30), color, 5, cv2.LINE_AA)
+        cv2.line(img, (cx + 8, cy + 13), (cx - 18, cy - 30), color, 5, cv2.LINE_AA)
+
+
+# ==========================================
+# التعرف على اليد
+# ==========================================
+def _dist(a, b):
+    return math.hypot(a.x - b.x, a.y - b.y)
+
+
+def get_hand_gesture(hand_lms):
+    """يعتمد على بُعد رأس الإصبع عن الرسغ (يشتغل مع أي اتجاه لليد)."""
+    lm = hand_lms.landmark
+    wrist = lm[0]
+
+    def up(tip, pip):
+        return _dist(lm[tip], wrist) > _dist(lm[pip], wrist) * 1.08
+
+    index, middle, ring, pinky = up(8, 6), up(12, 10), up(16, 14), up(20, 18)
+
+    if not (index or middle or ring or pinky):
+        return "Rock"
+    if index and middle and ring and pinky:
+        return "Paper"
+    if index and middle and not ring and not pinky:
+        return "Scissors"
+    return "Unknown"
+
+
+def get_winner(mine, opp):
+    if mine == opp:
+        return "DRAW!", "Same move! Try again", COLOR_PRIMARY
+    wins = {("Rock", "Scissors"), ("Paper", "Rock"), ("Scissors", "Paper")}
+    if (mine, opp) in wins:
+        return "YOU WIN!", f"{mine} beats {opp}", COLOR_GREEN
+    return "YOU LOSE!", f"{opp} beats {mine}", COLOR_SECONDARY
+
+
+# ==========================================
+# الشبكة
+# ==========================================
+def get_local_ip():
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        s.close()
+
+
+class Net:
+    def __init__(self, sock):
+        sock.settimeout(None)
+        try:
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError:
+            pass
+        self.sock = sock
+        self.lock = threading.Lock()
+        self.alive = True
+        self.opp_live = "Unknown"
+        self.opp_locked = None
+        self.start_flag = False
+        threading.Thread(target=self._recv, daemon=True).start()
+
+    def send(self, payload):
+        if not self.alive:
+            return
+        try:
+            self.sock.sendall((json.dumps(payload) + "\n").encode("utf-8"))
+        except OSError:
+            self.alive = False
+
+    def _recv(self):
+        buf = ""
+        while self.alive:
+            try:
+                data = self.sock.recv(4096)
+                if not data:
+                    break
+                buf += data.decode("utf-8", errors="ignore")
+                while "\n" in buf:
+                    line, buf = buf.split("\n", 1)
+                    if not line.strip():
+                        continue
+                    try:
+                        msg = json.loads(line)
+                    except ValueError:
+                        continue
+                    with self.lock:
+                        if "live" in msg:
+                            self.opp_live = msg["live"]
+                        if "locked" in msg:
+                            self.opp_locked = msg["locked"]
+                        if msg.get("start"):
+                            self.start_flag = True
+                            self.opp_locked = None
+            except OSError:
+                break
+        self.alive = False
+
+    def close(self):
+        self.alive = False
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
+
+# ==========================================
+# اللوبي (داخل النافذة)
+# ==========================================
+def load_ip():
+    try:
+        with open(IP_FILE, encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def save_ip(ip):
+    try:
+        with open(IP_FILE, "w", encoding="utf-8") as f:
+            f.write(ip)
+    except OSError:
+        pass
+
+
+def run_lobby():
+    bg = make_bg()
+    cx = W // 2
+    mode = "menu"
+    ip_text = load_ip()
+    error = ""
+    holder = {"sock": None, "err": None, "done": False}
+    server = None
+    my_ip = get_local_ip()
+    t0 = time.time()
+
+    def host_worker(srv, hld):
+        try:
+            conn, _ = srv.accept()
+            hld["sock"] = conn
+        except OSError as e:
+            hld["err"] = str(e)
+        hld["done"] = True
+
+    def join_worker(ip, hld):
+        try:
+            hld["sock"] = socket.create_connection((ip, PORT), timeout=6)
+        except OSError as e:
+            hld["err"] = str(e)
+        hld["done"] = True
+
+    def cancel_host():
+        nonlocal server
+        if server:
+            try:
+                server.close()
+            except OSError:
+                pass
+            server = None
+
+    while True:
+        f = bg.copy()
+        pulse = 0.5 + 0.5 * math.sin((time.time() - t0) * 3)
+
+        put_text(f, PLAYER_NAME, cx, 170, 2.6, COLOR_PRIMARY, 5, FONT, "center")
+        put_text(f, "ONLINE  ROCK  PAPER  SCISSORS", cx, 225, 0.95, COLOR_ACCENT, 2, FONT, "center")
+        cv2.line(f, (cx - 260, 250), (cx + 260, 250), COLOR_ACCENT, 2, cv2.LINE_AA)
+
+        if mode == "menu":
+            panel(f, (cx - 330, 300), (cx + 330, 560), border=COLOR_PRIMARY)
+            put_text(f, "[H]   Host a Game", cx, 375, 1.0, COLOR_GREEN, 2, FONT, "center")
+            put_text(f, "Create a room and wait for your friend", cx, 410, 0.6, COLOR_MUTED, 1, FONT_S, "center")
+            put_text(f, "[J]   Join a Game", cx, 480, 1.0, COLOR_PRIMARY, 2, FONT, "center")
+            put_text(f, "Enter your friend's IP address", cx, 515, 0.6, COLOR_MUTED, 1, FONT_S, "center")
+            if error:
+                put_text(f, error, cx, 610, 0.65, COLOR_SECONDARY, 2, FONT_S, "center")
+
+        elif mode == "host":
+            panel(f, (cx - 360, 300), (cx + 360, 560), border=COLOR_GREEN)
+            put_text(f, "ROOM CREATED", cx, 360, 0.9, COLOR_GREEN, 2, FONT, "center")
+            put_text(f, "Give this IP to your friend:", cx, 410, 0.7, COLOR_TEXT, 1, FONT_S, "center")
+            put_text(f, f"{my_ip}", cx, 480, 1.6, COLOR_PRIMARY, 3, FONT, "center")
+            col = tuple(int(c * (0.55 + 0.45 * pulse)) for c in COLOR_ACCENT)
+            put_text(f, f"Waiting for friend...  (port {PORT})", cx, 535, 0.65, col, 2, FONT_S, "center")
+            put_text(f, "ESC = back", cx, 650, 0.6, COLOR_MUTED, 1, FONT_S, "center")
+            if holder["done"]:
+                if holder["sock"]:
+                    cancel_host()
+                    return holder["sock"], True
+                mode, error = "menu", "Host error: " + str(holder["err"])
+                cancel_host()
+
+        elif mode == "join_input":
+            panel(f, (cx - 360, 300), (cx + 360, 560), border=COLOR_PRIMARY)
+            put_text(f, "ENTER HOST IP", cx, 360, 0.9, COLOR_PRIMARY, 2, FONT, "center")
+            panel(f, (cx - 250, 395), (cx + 250, 465), fill=(10, 5, 12), alpha=0.9, border=COLOR_ACCENT, r=12)
+            cursor = "_" if pulse > 0.5 else " "
+            put_text(f, ip_text + cursor, cx, 445, 1.1, COLOR_TEXT, 2, FONT, "center")
+            put_text(f, "ENTER = connect      ESC = back", cx, 520, 0.6, COLOR_MUTED, 1, FONT_S, "center")
+            if error:
+                put_text(f, error, cx, 610, 0.65, COLOR_SECONDARY, 2, FONT_S, "center")
+
+        elif mode == "joining":
+            panel(f, (cx - 360, 340), (cx + 360, 520), border=COLOR_ACCENT)
+            dots = "." * (int((time.time() - t0) * 3) % 4)
+            put_text(f, f"Connecting to {ip_text}{dots}", cx, 440, 0.9, COLOR_TEXT, 2, FONT, "center")
+            if holder["done"]:
+                if holder["sock"]:
+                    save_ip(ip_text)
+                    return holder["sock"], False
+                mode, error = "join_input", "Could not connect: " + str(holder["err"])[:60]
+
+        cv2.imshow(WIN, f)
+        k = cv2.waitKey(30) & 0xFF
+        try:
+            if cv2.getWindowProperty(WIN, cv2.WND_PROP_VISIBLE) < 1:
+                cancel_host()
+                return None
+        except cv2.error:
+            pass
+
+        if k == 255:
+            continue
+        if mode == "menu":
+            if k in (ord("q"), 27):
+                return None
+            if k in (ord("h"), ord("H")):
+                try:
+                    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    server.bind(("0.0.0.0", PORT))
+                    server.listen(1)
+                except OSError as e:
+                    error = f"Cannot open port {PORT}: {e}"
+                    cancel_host()
+                    continue
+                holder = {"sock": None, "err": None, "done": False}
+                threading.Thread(target=host_worker, args=(server, holder), daemon=True).start()
+                error, mode = "", "host"
+            elif k in (ord("j"), ord("J")):
+                error, mode = "", "join_input"
+        elif mode == "host":
+            if k == 27:
+                cancel_host()
+                mode = "menu"
+        elif mode == "join_input":
+            if k == 27:
+                mode, error = "menu", ""
+            elif k in (8, 127):
+                ip_text = ip_text[:-1]
+            elif k in (13, 10):
+                if ip_text.strip():
+                    ip_text = ip_text.strip()
+                    holder = {"sock": None, "err": None, "done": False}
+                    threading.Thread(target=join_worker, args=(ip_text, holder), daemon=True).start()
+                    error, mode = "", "joining"
+            elif (48 <= k <= 57 or k == 46) and len(ip_text) < 21:
+                ip_text += chr(k)
+        elif mode == "joining":
+            if k == 27:
+                mode = "join_input"
+
+
+# ==========================================
+# اللعبة
+# ==========================================
+def open_camera():
+    backend = cv2.CAP_DSHOW if os.name == "nt" else cv2.CAP_ANY
+    for idx in (0, 1, 2):
+        cap = cv2.VideoCapture(idx, backend)
+        if cap.isOpened():
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, W)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, H)
+            return cap
+        cap.release()
+    return None
+
+
+def draw_hud(frame, my_score, opp_score, round_no, is_host):
+    mid = W // 2
+    panel(frame, (0, 0), (W, 92), alpha=0.88, r=1)
+    cv2.line(frame, (0, 92), (W, 92), COLOR_ACCENT, 2, cv2.LINE_AA)
+
+    panel(frame, (20, 12), (230, 80), fill=(40, 60, 30), alpha=0.9, border=COLOR_GREEN, r=14)
+    put_text(frame, "YOU", 40, 38, 0.6, COLOR_GREEN, 2)
+    put_text(frame, str(my_score), 205, 68, 1.4, COLOR_TEXT, 2, FONT, "right")
+
+    panel(frame, (W - 230, 12), (W - 20, 80), fill=(40, 20, 60), alpha=0.9, border=COLOR_SECONDARY, r=14)
+    put_text(frame, "FRIEND", W - 210, 38, 0.6, (140, 100, 255), 2)
+    put_text(frame, str(opp_score), W - 45, 68, 1.4, COLOR_TEXT, 2, FONT, "right")
+
+    put_text(frame, PLAYER_NAME, mid, 48, 1.1, COLOR_PRIMARY, 2, FONT, "center")
+    put_text(frame, f"ROUND {round_no}   |   {'HOST' if is_host else 'GUEST'}", mid, 78, 0.55,
+             COLOR_MUTED, 1, FONT_S, "center")
+
+
+def draw_footer(frame, my_gesture, opp_live, alive):
+    mid = W // 2
+    panel(frame, (0, H - 56), (W, H), alpha=0.88, r=1)
+    cv2.line(frame, (0, H - 56), (W, H - 56), COLOR_ACCENT, 1, cv2.LINE_AA)
+    dot = COLOR_GREEN if my_gesture != "Unknown" else COLOR_MUTED
+    cv2.circle(frame, (36, H - 28), 7, dot, -1, cv2.LINE_AA)
+    put_text(frame, f"Your hand: {my_gesture}", 54, H - 20, 0.65, COLOR_PRIMARY, 2)
+    cv2.circle(frame, (mid - 150, H - 28), 7, COLOR_GREEN if alive else COLOR_SECONDARY, -1, cv2.LINE_AA)
+    put_text(frame, f"Friend: {opp_live if alive else 'Disconnected'}", mid - 132, H - 20, 0.65,
+             COLOR_GREEN if alive else COLOR_SECONDARY, 2)
+    put_text(frame, "Quit [Q]", W - 30, H - 20, 0.65, COLOR_ACCENT, 2, FONT_S, "right")
+
+
+def play(sock, is_host):
+    net = Net(sock)
+    cap = open_camera()
+    if cap is None:
+        net.close()
+        print("لم يتم العثور على كاميرا.")
+        return
+
+    hands = mp_hands.Hands(
+        static_image_mode=False,
+        max_num_hands=1,
+        min_detection_confidence=0.7,
+        min_tracking_confidence=0.6,
+    )
+
+    mid = W // 2
+    my_score = opp_score = 0
+    round_no = 1
+    state = "WAITING"          # WAITING -> COUNTDOWN -> SYNCING -> RESULT
+    state_t = time.time()
+    history = deque(maxlen=6)
+    last_valid = "Rock"
+    my_locked = "Rock"
+    opp_final = "Rock"
+    res_title, res_sub, res_color = "", "", COLOR_TEXT
+    last_sent = 0.0
+    notice, notice_t = "", 0.0
+
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            break
+        frame = cv2.flip(frame, 1)
+        if frame.shape[1] != W or frame.shape[0] != H:
+            frame = cv2.resize(frame, (W, H))
+        now = time.time()
+
+        if not net.alive:
+            panel(frame, (mid - 330, H // 2 - 70), (mid + 330, H // 2 + 70), border=COLOR_SECONDARY)
+            put_text(frame, "FRIEND DISCONNECTED", mid, H // 2 + 12, 1.1, COLOR_SECONDARY, 3, FONT, "center")
+            cv2.imshow(WIN, frame)
+            cv2.waitKey(2000)
+            break
+
+        # ---- تتبع اليد ----
+        res = hands.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        raw = "Unknown"
+        if res.multi_hand_landmarks:
+            lms = res.multi_hand_landmarks[0]
+            mp_drawing.draw_landmarks(
+                frame, lms, mp_hands.HAND_CONNECTIONS,
+                mp_drawing.DrawingSpec(color=COLOR_PRIMARY, thickness=3, circle_radius=4),
+                mp_drawing.DrawingSpec(color=COLOR_ACCENT, thickness=2),
+            )
+            raw = get_hand_gesture(lms)
+        history.append(raw)
+        known = [g for g in history if g != "Unknown"]
+        my_gesture = Counter(known).most_common(1)[0][0] if len(known) >= 3 else "Unknown"
+        if my_gesture != "Unknown":
+            last_valid = my_gesture
+
+        if now - last_sent > 0.1:
+            net.send({"live": my_gesture})
+            last_sent = now
+
+        with net.lock:
+            opp_live = net.opp_live
+
+        draw_hud(frame, my_score, opp_score, round_no, is_host)
+
+        # ---- مراحل الجولة ----
+        if state == "WAITING":
+            bw, bh = 640, 150
+            bx, by = mid - bw // 2, H // 2 - bh // 2
+            panel(frame, (bx, by), (bx + bw, by + bh), border=COLOR_PRIMARY)
+            ready = opp_live != "Unknown"
+            put_text(frame, "Friend is READY!" if ready else "Waiting for friend's hand...",
+                     mid, by + 55, 0.85, COLOR_GREEN if ready else COLOR_ACCENT, 2, FONT_S, "center")
+            put_text(frame, "Press SPACE to start the round" if is_host else "Waiting for Host to press SPACE...",
+                     mid, by + 108, 0.75, COLOR_TEXT, 2, FONT_S, "center")
+            if notice and now - notice_t < 3:
+                put_text(frame, notice, mid, by + bh + 40, 0.65, COLOR_SECONDARY, 2, FONT_S, "center")
+
+            with net.lock:
+                started = net.start_flag
+                net.start_flag = False
+            if started:
+                state, state_t = "COUNTDOWN", now
+
+        elif state == "COUNTDOWN":
+            elapsed = now - state_t
+            count = 3 - int(elapsed)
+            if count > 0:
+                frac = elapsed - int(elapsed)
+                cy = H // 2 - 10
+                put_text(frame, "SHOW YOUR MOVE", mid, cy - 125, 0.9, COLOR_ACCENT, 2, FONT, "center")
+                cv2.circle(frame, (mid, cy), 90, COLOR_BG_DARK, -1, cv2.LINE_AA)
+                cv2.circle(frame, (mid, cy), 90, COLOR_BG_LIGHT, 6, cv2.LINE_AA)
+                cv2.ellipse(frame, (mid, cy), (90, 90), -90, 0, 360 * frac, COLOR_PRIMARY, 6, cv2.LINE_AA)
+                put_text(frame, str(count), mid, cy + 40, 3.2, COLOR_PRIMARY, 6, FONT, "center")
+            else:
+                my_locked = last_valid
+                net.send({"locked": my_locked})
+                state, state_t = "SYNCING", now
+
+        elif state == "SYNCING":
+            put_text(frame, "Revealing...", mid, H // 2, 1.2, COLOR_PRIMARY, 3, FONT, "center")
+            with net.lock:
+                got = net.opp_locked
+                if got is not None:
+                    net.opp_locked = None
+            if got is not None:
+                opp_final = got
+                res_title, res_sub, res_color = get_winner(my_locked, opp_final)
+                if "WIN" in res_title:
+                    my_score += 1
+                elif "LOSE" in res_title:
+                    opp_score += 1
+                state, state_t = "RESULT", now
+            elif now - state_t > 6:
+                notice, notice_t = "Round timed out - try again", now
+                state, state_t = "WAITING", now
+
+        elif state == "RESULT":
+            elapsed = now - state_t
+            cy = H // 2
+            if elapsed < 1.0:
+                cv2.rectangle(frame, (4, 96), (W - 4, H - 60), res_color, 6, cv2.LINE_AA)
+
+            panel(frame, (mid - 330, cy - 130), (mid - 100, cy + 100), border=COLOR_GREEN, th=3)
+            put_text(frame, "YOU", mid - 215, cy - 92, 0.7, COLOR_GREEN, 2, FONT_S, "center")
+            draw_gesture_icon(frame, my_locked, mid - 215, cy - 15, COLOR_GREEN)
+            put_text(frame, my_locked, mid - 215, cy + 78, 0.8, COLOR_TEXT, 2, FONT_S, "center")
+
+            put_text(frame, "VS", mid, cy + 10, 1.4, COLOR_PRIMARY, 3, FONT, "center")
+
+            panel(frame, (mid + 100, cy - 130), (mid + 330, cy + 100), border=COLOR_SECONDARY, th=3)
+            put_text(frame, "FRIEND", mid + 215, cy - 92, 0.7, (140, 100, 255), 2, FONT_S, "center")
+            draw_gesture_icon(frame, opp_final, mid + 215, cy - 15, (140, 100, 255))
+            put_text(frame, opp_final, mid + 215, cy + 78, 0.8, COLOR_TEXT, 2, FONT_S, "center")
+
+            panel(frame, (mid - 240, cy + 125), (mid + 240, cy + 215), alpha=0.92, border=res_color, th=3)
+            put_text(frame, res_title, mid, cy + 175, 1.3, res_color, 3, FONT, "center")
+            put_text(frame, res_sub, mid, cy + 203, 0.6, COLOR_TEXT, 1, FONT_S, "center")
+
+            if elapsed > 3.5:
+                round_no += 1
+                state, state_t = "WAITING", now
+
+        draw_footer(frame, my_gesture, opp_live, net.alive)
+        cv2.imshow(WIN, frame)
+
+        key = cv2.waitKey(1) & 0xFF
+        if key in (ord("q"), ord("Q"), 27):
+            break
+        if key == 32 and is_host and state == "WAITING":
+            net.send({"start": True})
+            with net.lock:
+                net.opp_locked = None
+            state, state_t = "COUNTDOWN", time.time()
+        try:
+            if cv2.getWindowProperty(WIN, cv2.WND_PROP_VISIBLE) < 1:
+                break
+        except cv2.error:
+            pass
+
+    cap.release()
+    hands.close()
+    net.close()
+
+
+def main():
+    cv2.namedWindow(WIN, cv2.WINDOW_AUTOSIZE)
+    result = run_lobby()
+    if result:
+        sock, is_host = result
+        play(sock, is_host)
+    cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
